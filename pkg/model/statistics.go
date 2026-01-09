@@ -167,6 +167,20 @@ type ConversionsStats struct {
 	CustomMetricTotal float64 `db:"custom_metric_total" json:"custom_metric_total"`
 }
 
+// PageConversionStats is the result type for event conversion rate per page path.
+type PageConversionStats struct {
+	Path              string  `json:"path"`
+	Hostname          string  `json:"hostname"`
+	Title             string  `json:"title"`
+	Visitors          int     `json:"visitors"`
+	Views             int     `json:"views"`
+	Events            int     `json:"events"`
+	EventVisitors     int     `json:"event_visitors"`
+	CR                float64 `json:"cr"`
+	CustomMetricAvg   float64 `db:"custom_metric_avg" json:"custom_metric_avg"`
+	CustomMetricTotal float64 `db:"custom_metric_total" json:"custom_metric_total"`
+}
+
 // EventStats is the result type for custom events.
 type EventStats struct {
 	Name                   string   `db:"event_name" json:"name"`

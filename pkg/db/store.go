@@ -2,9 +2,10 @@ package db
 
 import (
 	"context"
+	"time"
+
 	"github.com/pirsch-analytics/pirsch/v6/pkg"
 	"github.com/pirsch-analytics/pirsch/v6/pkg/model"
-	"time"
 )
 
 // Store is the database storage interface.
@@ -86,6 +87,9 @@ type Store interface {
 
 	// GetConversionsStats returns the model.ConversionsStats.
 	GetConversionsStats(context.Context, string, bool, ...any) (*model.ConversionsStats, error)
+
+	// SelectPageConversionStats selects model.PageConversionStats.
+	SelectPageConversionStats(context.Context, bool, bool, string, ...any) ([]model.PageConversionStats, error)
 
 	// SelectEventStats selects model.EventStats.
 	SelectEventStats(context.Context, bool, string, ...any) ([]model.EventStats, error)

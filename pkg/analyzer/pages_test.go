@@ -3,14 +3,15 @@ package analyzer
 import (
 	"context"
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/ClickHouse/clickhouse-go/v2/lib/timezone"
 	"github.com/pirsch-analytics/pirsch/v6/pkg"
 	"github.com/pirsch-analytics/pirsch/v6/pkg/db"
 	"github.com/pirsch-analytics/pirsch/v6/pkg/model"
 	"github.com/pirsch-analytics/pirsch/v6/pkg/util"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 func TestAnalyzer_Hostname(t *testing.T) {
@@ -1631,6 +1632,159 @@ func TestAnalyzer_Conversions(t *testing.T) {
 	filter.To = util.Today()
 	_, err = analyzer.Pages.Conversions(filter)
 	assert.NoError(t, err)
+}
+
+func TestAnalyzer_ConversionsByPage(t *testing.T) {
+	db.CleanupDB(t, dbClient)
+	assert.NoError(t, dbClient.SavePageViews([]model.PageView{
+		{VisitorID: 1, Time: util.Today(), Path: "/pricing", Hostname: "example.com"},
+		{VisitorID: 2, Time: util.Today(), Path: "/pricing", Hostname: "example.com"},
+		{VisitorID: 3, Time: util.Today(), Path: "/pricing", Hostname: "example.com"},
+		{VisitorID: 4, Time: util.Today(), Path: "/features", Hostname: "example.com"},
+		{VisitorID: 5, Time: util.Today(), Path: "/features", Hostname: "example.com"},
+		{VisitorID: 6, Time: util.Today(), Path: "/", Hostname: "example.com"},
+		{VisitorID: 7, Time: util.Today(), Path: "/", Hostname: "example.com"},
+		{VisitorID: 8, Time: util.Today(), Path: "/", Hostname: "example.com"},
+	}))
+	saveSessions(t, [][]model.Session{
+		{
+			{Sign: 1, VisitorID: 1, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/pricing", PageViews: 1, Hostname: "example.com"},
+			{Sign: 1, VisitorID: 2, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/pricing", PageViews: 1, Hostname: "example.com"},
+			{Sign: 1, VisitorID: 3, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/pricing", PageViews: 1, Hostname: "example.com"},
+			{Sign: 1, VisitorID: 4, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/features", PageViews: 1, Hostname: "example.com"},
+			{Sign: 1, VisitorID: 5, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/features", PageViews: 1, Hostname: "example.com"},
+			{Sign: 1, VisitorID: 6, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/", PageViews: 1, Hostname: "example.com"},
+			{Sign: 1, VisitorID: 7, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/", PageViews: 1, Hostname: "example.com"},
+			{Sign: 1, VisitorID: 8, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/", PageViews: 1, Hostname: "example.com"},
+		},
+	})
+	assert.NoError(t, dbClient.SaveEvents([]model.Event{
+		{VisitorID: 1, Time: util.Today(), Name: "signup", Path: "/pricing", Hostname: "example.com"},
+		{VisitorID: 2, Time: util.Today(), Name: "signup", Path: "/pricing", Hostname: "example.com"},
+		{VisitorID: 4, Time: util.Today(), Name: "signup", Path: "/features", Hostname: "example.com"},
+		{VisitorID: 6, Time: util.Today(), Name: "signup", Path: "/", Hostname: "example.com"},
+	}))
+	time.Sleep(time.Millisecond * 100)
+	analyzer := NewAnalyzer(dbClient)
+
+	// Test empty result when no event name specified
+	stats, err := analyzer.Pages.ConversionsByPage(nil)
+	assert.NoError(t, err)
+	assert.Empty(t, stats)
+
+	// Test basic conversion by page
+	stats, err = analyzer.Pages.ConversionsByPage(&Filter{
+		EventName: []string{"signup"},
+	})
+	assert.NoError(t, err)
+	assert.Len(t, stats, 3)
+
+	// Find each page in results
+	var pricingStats, featuresStats, homeStats *model.PageConversionStats
+	for i := range stats {
+		switch stats[i].Path {
+		case "/pricing":
+			pricingStats = &stats[i]
+		case "/features":
+			featuresStats = &stats[i]
+		case "/":
+			homeStats = &stats[i]
+		}
+	}
+
+	assert.NotNil(t, pricingStats)
+	assert.Equal(t, "example.com", pricingStats.Hostname)
+	assert.Equal(t, 3, pricingStats.Visitors)
+	assert.Equal(t, 3, pricingStats.Views)
+	assert.Equal(t, 2, pricingStats.EventVisitors)
+	assert.Equal(t, 2, pricingStats.Events)
+	assert.InDelta(t, 0.66, pricingStats.CR, 0.01) // 2/3 = 66%
+
+	assert.NotNil(t, featuresStats)
+	assert.Equal(t, 2, featuresStats.Visitors)
+	assert.Equal(t, 2, featuresStats.Views)
+	assert.Equal(t, 1, featuresStats.EventVisitors)
+	assert.Equal(t, 1, featuresStats.Events)
+	assert.InDelta(t, 0.5, featuresStats.CR, 0.01) // 1/2 = 50%
+
+	assert.NotNil(t, homeStats)
+	assert.Equal(t, 3, homeStats.Visitors)
+	assert.Equal(t, 3, homeStats.Views)
+	assert.Equal(t, 1, homeStats.EventVisitors)
+	assert.Equal(t, 1, homeStats.Events)
+	assert.InDelta(t, 0.33, homeStats.CR, 0.01) // 1/3 = 33%
+
+	// Test with path filter
+	stats, err = analyzer.Pages.ConversionsByPage(&Filter{
+		EventName: []string{"signup"},
+		Path:      []string{"/pricing"},
+	})
+	assert.NoError(t, err)
+	assert.Len(t, stats, 1)
+	assert.Equal(t, "/pricing", stats[0].Path)
+
+	// Test with custom metric
+	db.CleanupDB(t, dbClient)
+	assert.NoError(t, dbClient.SavePageViews([]model.PageView{
+		{VisitorID: 1, Time: util.Today(), Path: "/pricing", Hostname: "example.com"},
+		{VisitorID: 2, Time: util.Today(), Path: "/pricing", Hostname: "example.com"},
+	}))
+	saveSessions(t, [][]model.Session{
+		{
+			{Sign: 1, VisitorID: 1, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/pricing", PageViews: 1, Hostname: "example.com"},
+			{Sign: 1, VisitorID: 2, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/pricing", PageViews: 1, Hostname: "example.com"},
+		},
+	})
+	assert.NoError(t, dbClient.SaveEvents([]model.Event{
+		{VisitorID: 1, Time: util.Today(), Name: "purchase", Path: "/pricing", Hostname: "example.com", MetaKeys: []string{"amount", "currency"}, MetaValues: []string{"100", "USD"}},
+		{VisitorID: 2, Time: util.Today(), Name: "purchase", Path: "/pricing", Hostname: "example.com", MetaKeys: []string{"amount", "currency"}, MetaValues: []string{"200", "USD"}},
+	}))
+	time.Sleep(time.Millisecond * 100)
+
+	stats, err = analyzer.Pages.ConversionsByPage(&Filter{
+		EventName:        []string{"purchase"},
+		CustomMetricKey:  "amount",
+		CustomMetricType: pkg.CustomMetricTypeInteger,
+	})
+	assert.NoError(t, err)
+	assert.Len(t, stats, 1)
+	assert.Equal(t, "/pricing", stats[0].Path)
+	assert.Equal(t, 2, stats[0].Visitors)
+	assert.Equal(t, 2, stats[0].EventVisitors)
+	assert.InDelta(t, 1.0, stats[0].CR, 0.01)
+	assert.InDelta(t, 150, stats[0].CustomMetricAvg, 0.01)
+	assert.InDelta(t, 300, stats[0].CustomMetricTotal, 0.01)
+
+	// Test with event meta filter
+	db.CleanupDB(t, dbClient)
+	assert.NoError(t, dbClient.SavePageViews([]model.PageView{
+		{VisitorID: 1, Time: util.Today(), Path: "/pricing", Hostname: "example.com"},
+		{VisitorID: 2, Time: util.Today(), Path: "/pricing", Hostname: "example.com"},
+		{VisitorID: 3, Time: util.Today(), Path: "/pricing", Hostname: "example.com"},
+	}))
+	saveSessions(t, [][]model.Session{
+		{
+			{Sign: 1, VisitorID: 1, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/pricing", PageViews: 1, Hostname: "example.com"},
+			{Sign: 1, VisitorID: 2, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/pricing", PageViews: 1, Hostname: "example.com"},
+			{Sign: 1, VisitorID: 3, Time: util.Today(), Start: time.Now(), EntryPath: "/", ExitPath: "/pricing", PageViews: 1, Hostname: "example.com"},
+		},
+	})
+	assert.NoError(t, dbClient.SaveEvents([]model.Event{
+		{VisitorID: 1, Time: util.Today(), Name: "signup", Path: "/pricing", Hostname: "example.com", MetaKeys: []string{"plan"}, MetaValues: []string{"premium"}},
+		{VisitorID: 2, Time: util.Today(), Name: "signup", Path: "/pricing", Hostname: "example.com", MetaKeys: []string{"plan"}, MetaValues: []string{"free"}},
+	}))
+	time.Sleep(time.Millisecond * 100)
+
+	stats, err = analyzer.Pages.ConversionsByPage(&Filter{
+		EventName: []string{"signup"},
+		EventMeta: map[string]string{"plan": "premium"},
+	})
+	assert.NoError(t, err)
+	assert.Len(t, stats, 1)
+	assert.Equal(t, "/pricing", stats[0].Path)
+	assert.Equal(t, 3, stats[0].Visitors)      // All visitors to the page
+	assert.Equal(t, 1, stats[0].EventVisitors) // Only 1 converted with plan=premium
+	assert.InDelta(t, 0.33, stats[0].CR, 0.01) // 1/3 = 33%
 }
 
 func TestAnalyzer_avgTimeOnPage(t *testing.T) {

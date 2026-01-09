@@ -2,11 +2,12 @@ package db
 
 import (
 	"context"
-	"github.com/pirsch-analytics/pirsch/v6/pkg"
-	"github.com/pirsch-analytics/pirsch/v6/pkg/model"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/pirsch-analytics/pirsch/v6/pkg"
+	"github.com/pirsch-analytics/pirsch/v6/pkg/model"
 )
 
 // ClientMock is a mock Store implementation.
@@ -236,6 +237,11 @@ func (client *ClientMock) SelectTotalVisitorSessionStats(context.Context, string
 
 // GetConversionsStats implements the Store interface.
 func (client *ClientMock) GetConversionsStats(context.Context, string, bool, ...any) (*model.ConversionsStats, error) {
+	return nil, nil
+}
+
+// SelectPageConversionStats implements the Store interface.
+func (client *ClientMock) SelectPageConversionStats(context.Context, bool, bool, string, ...any) ([]model.PageConversionStats, error) {
 	return nil, nil
 }
 

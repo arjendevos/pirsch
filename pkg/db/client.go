@@ -1408,6 +1408,96 @@ func (client *Client) GetConversionsStats(ctx context.Context, query string, inc
 	return result, nil
 }
 
+// SelectPageConversionStats implements the Store interface.
+func (client *Client) SelectPageConversionStats(ctx context.Context, includeTitle, includeCustomMetric bool, query string, args ...any) ([]model.PageConversionStats, error) {
+	rows, err := client.QueryContext(ctx, query, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer client.closeRows(rows)
+	var results []model.PageConversionStats
+
+	if includeTitle {
+		if includeCustomMetric {
+			for rows.Next() {
+				var result model.PageConversionStats
+
+				if err := rows.Scan(&result.Path,
+					&result.Hostname,
+					&result.Visitors,
+					&result.Views,
+					&result.Events,
+					&result.EventVisitors,
+					&result.CR,
+					&result.Title,
+					&result.CustomMetricAvg,
+					&result.CustomMetricTotal); err != nil {
+					return nil, err
+				}
+
+				results = append(results, result)
+			}
+		} else {
+			for rows.Next() {
+				var result model.PageConversionStats
+
+				if err := rows.Scan(&result.Path,
+					&result.Hostname,
+					&result.Visitors,
+					&result.Views,
+					&result.Events,
+					&result.EventVisitors,
+					&result.CR,
+					&result.Title); err != nil {
+					return nil, err
+				}
+
+				results = append(results, result)
+			}
+		}
+	} else {
+		if includeCustomMetric {
+			for rows.Next() {
+				var result model.PageConversionStats
+
+				if err := rows.Scan(&result.Path,
+					&result.Hostname,
+					&result.Visitors,
+					&result.Views,
+					&result.Events,
+					&result.EventVisitors,
+					&result.CR,
+					&result.CustomMetricAvg,
+					&result.CustomMetricTotal); err != nil {
+					return nil, err
+				}
+
+				results = append(results, result)
+			}
+		} else {
+			for rows.Next() {
+				var result model.PageConversionStats
+
+				if err := rows.Scan(&result.Path,
+					&result.Hostname,
+					&result.Visitors,
+					&result.Views,
+					&result.Events,
+					&result.EventVisitors,
+					&result.CR); err != nil {
+					return nil, err
+				}
+
+				results = append(results, result)
+			}
+		}
+	}
+
+	return results, nil
+}
+
 // SelectEventStats implements the Store interface.
 func (client *Client) SelectEventStats(ctx context.Context, breakdown bool, query string, args ...any) ([]model.EventStats, error) {
 	rows, err := client.QueryContext(ctx, query, args...)

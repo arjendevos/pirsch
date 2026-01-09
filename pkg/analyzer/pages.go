@@ -349,6 +349,57 @@ func (pages *Pages) Conversions(filter *Filter) (*model.ConversionsStats, error)
 	return stats, nil
 }
 
+// ConversionsByPage returns the event conversion rate grouped by page path.
+// Shows what percentage of visitors to each page triggered the specified event.
+// Requires filter.EventName to be set. Optionally filters by event meta key/value.
+func (pages *Pages) ConversionsByPage(filter *Filter) ([]model.PageConversionStats, error) {
+	if len(filter.EventName) == 0 {
+		return []model.PageConversionStats{}, nil
+	}
+
+	filter = pages.analyzer.getFilter(filter)
+	fields := []Field{
+		FieldPath,
+		FieldHostname,
+		FieldVisitors,
+		FieldViews,
+		FieldEventCount,
+		FieldEventVisitors,
+		FieldCR,
+	}
+	groupBy := []Field{
+		FieldPath,
+		FieldHostname,
+	}
+	orderBy := []Field{
+		FieldCR,
+		FieldVisitors,
+		FieldPath,
+	}
+
+	if filter.IncludeTitle {
+		fields = append(fields, FieldTitle)
+		groupBy = append(groupBy, FieldTitle)
+		orderBy = append(orderBy, FieldTitle)
+	}
+
+	includeCustomMetric := false
+
+	if filter.CustomMetricType != "" && filter.CustomMetricKey != "" {
+		fields = append(fields, FieldEventMetaCustomMetricAvg, FieldEventMetaCustomMetricTotal)
+		includeCustomMetric = true
+	}
+
+	q, args := filter.buildQuery(fields, groupBy, orderBy, nil, "")
+	stats, err := pages.store.SelectPageConversionStats(filter.Ctx, filter.IncludeTitle, includeCustomMetric, q, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
 func (pages *Pages) totalVisitorsSessions(filter *Filter, paths []string) ([]model.TotalVisitorSessionStats, error) {
 	if len(paths) == 0 {
 		return []model.TotalVisitorSessionStats{}, nil

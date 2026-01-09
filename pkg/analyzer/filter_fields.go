@@ -664,6 +664,24 @@ var (
 		Name:           "custom_metric_total",
 	}
 
+	// FieldEventCount is a query result column.
+	FieldEventCount = Field{
+		querySessions:  "sum(sign)",
+		queryPageViews: "count(*)",
+		queryDirection: "DESC",
+		sampleType:     sampleTypeInt,
+		Name:           "events",
+	}
+
+	// FieldEventVisitors is a query result column.
+	FieldEventVisitors = Field{
+		querySessions:  "uniq(t.visitor_id)",
+		queryPageViews: "uniq(k.visitor_id)",
+		queryDirection: "DESC",
+		sampleType:     sampleTypeInt,
+		Name:           "event_visitors",
+	}
+
 	// FieldPlatformDesktop is a query result column.
 	FieldPlatformDesktop = Field{
 		querySessions:    "uniqIf(visitor_id, desktop = 1)",
