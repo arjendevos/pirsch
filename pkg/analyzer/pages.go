@@ -400,6 +400,140 @@ func (pages *Pages) ConversionsByPage(filter *Filter) ([]model.PageConversionSta
 	return stats, nil
 }
 
+// ConversionsByPageBreakdown returns the event conversion rate grouped by page path with meta value breakdown.
+// Shows what percentage of visitors to each page triggered the specified event, broken down by meta key values.
+// Requires filter.EventName and filter.EventMetaKey to be set.
+func (pages *Pages) ConversionsByPageBreakdown(filter *Filter) ([]model.PageConversionMetaStats, error) {
+	if len(filter.EventName) == 0 || len(filter.EventMetaKey) == 0 {
+		return []model.PageConversionMetaStats{}, nil
+	}
+
+	filter = pages.analyzer.getFilter(filter)
+
+	// Step 1: Get paginated pages with page-level totals (respects LIMIT/OFFSET)
+	pageFields := []Field{
+		FieldPath,
+		FieldHostname,
+		FieldVisitors,
+		FieldViews,
+		FieldEventCount,
+		FieldEventVisitors,
+		FieldCR,
+	}
+	pageGroupBy := []Field{
+		FieldPath,
+		FieldHostname,
+	}
+	pageOrderBy := []Field{
+		FieldCR,
+		FieldVisitors,
+		FieldPath,
+	}
+
+	q, args := filter.buildQuery(pageFields, pageGroupBy, pageOrderBy, nil, "")
+	pageStats, err := pages.store.SelectPageConversionStats(filter.Ctx, false, false, q, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(pageStats) == 0 {
+		return []model.PageConversionMetaStats{}, nil
+	}
+
+	// Step 2: Get meta value breakdown for those specific pages (no pagination)
+	paths := make([]string, len(pageStats))
+	for i, p := range pageStats {
+		paths[i] = p.Path
+	}
+
+	breakdownFilter := pages.analyzer.getFilter(filter)
+	breakdownFilter.Path = nil
+	breakdownFilter.AnyPath = paths
+	breakdownFilter.Offset = 0
+	breakdownFilter.Limit = 0
+
+	breakdownFields := []Field{
+		FieldPath,
+		FieldHostname,
+		FieldVisitors,
+		FieldViews,
+		FieldEventCount,
+		FieldEventVisitors,
+		FieldCR,
+		FieldEventMetaValues,
+	}
+	breakdownGroupBy := []Field{
+		FieldPath,
+		FieldHostname,
+		FieldEventMetaValues,
+	}
+	breakdownOrderBy := []Field{
+		FieldPath,
+		FieldEventMetaValues,
+	}
+
+	includeCustomMetric := false
+
+	if filter.CustomMetricType != "" && filter.CustomMetricKey != "" {
+		breakdownFields = append(breakdownFields, FieldEventMetaCustomMetricAvg, FieldEventMetaCustomMetricTotal)
+		includeCustomMetric = true
+	}
+
+	q, args = breakdownFilter.buildQuery(breakdownFields, breakdownGroupBy, breakdownOrderBy, nil, "")
+	metaRows, err := pages.store.SelectPageConversionMetaStats(filter.Ctx, includeCustomMetric, q, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 3: Combine page totals with meta breakdown
+	return pages.combinePageConversionMetaStats(pageStats, metaRows), nil
+}
+
+// combinePageConversionMetaStats combines page-level stats with meta value breakdown rows.
+func (pages *Pages) combinePageConversionMetaStats(pageStats []model.PageConversionStats, metaRows []model.PageConversionMetaRow) []model.PageConversionMetaStats {
+	// Build meta values lookup by path+hostname
+	metaLookup := make(map[string][]model.MetaValueStats)
+
+	for _, row := range metaRows {
+		key := row.Path + "\x00" + row.Hostname
+		metaLookup[key] = append(metaLookup[key], model.MetaValueStats{
+			Value:             row.MetaValue,
+			Events:            row.Events,
+			EventVisitors:     row.EventVisitors,
+			CR:                row.CR,
+			CustomMetricAvg:   row.CustomMetricAvg,
+			CustomMetricTotal: row.CustomMetricTotal,
+		})
+	}
+
+	// Build results maintaining page order from first query
+	results := make([]model.PageConversionMetaStats, 0, len(pageStats))
+
+	for _, page := range pageStats {
+		key := page.Path + "\x00" + page.Hostname
+		metaValues := metaLookup[key]
+
+		if metaValues == nil {
+			metaValues = []model.MetaValueStats{}
+		}
+
+		results = append(results, model.PageConversionMetaStats{
+			Path:          page.Path,
+			Hostname:      page.Hostname,
+			Visitors:      page.Visitors,
+			Views:         page.Views,
+			Events:        page.Events,
+			EventVisitors: page.EventVisitors,
+			CR:            page.CR,
+			MetaValues:    metaValues,
+		})
+	}
+
+	return results
+}
+
 func (pages *Pages) totalVisitorsSessions(filter *Filter, paths []string) ([]model.TotalVisitorSessionStats, error) {
 	if len(paths) == 0 {
 		return []model.TotalVisitorSessionStats{}, nil

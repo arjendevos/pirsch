@@ -1498,6 +1498,58 @@ func (client *Client) SelectPageConversionStats(ctx context.Context, includeTitl
 	return results, nil
 }
 
+// SelectPageConversionMetaStats implements the Store interface.
+func (client *Client) SelectPageConversionMetaStats(ctx context.Context, includeCustomMetric bool, query string, args ...any) ([]model.PageConversionMetaRow, error) {
+	rows, err := client.QueryContext(ctx, query, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer client.closeRows(rows)
+	var results []model.PageConversionMetaRow
+
+	if includeCustomMetric {
+		for rows.Next() {
+			var result model.PageConversionMetaRow
+
+			if err := rows.Scan(&result.Path,
+				&result.Hostname,
+				&result.Visitors,
+				&result.Views,
+				&result.Events,
+				&result.EventVisitors,
+				&result.CR,
+				&result.MetaValue,
+				&result.CustomMetricAvg,
+				&result.CustomMetricTotal); err != nil {
+				return nil, err
+			}
+
+			results = append(results, result)
+		}
+	} else {
+		for rows.Next() {
+			var result model.PageConversionMetaRow
+
+			if err := rows.Scan(&result.Path,
+				&result.Hostname,
+				&result.Visitors,
+				&result.Views,
+				&result.Events,
+				&result.EventVisitors,
+				&result.CR,
+				&result.MetaValue); err != nil {
+				return nil, err
+			}
+
+			results = append(results, result)
+		}
+	}
+
+	return results, nil
+}
+
 // SelectEventStats implements the Store interface.
 func (client *Client) SelectEventStats(ctx context.Context, breakdown bool, query string, args ...any) ([]model.EventStats, error) {
 	rows, err := client.QueryContext(ctx, query, args...)

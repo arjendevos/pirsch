@@ -181,6 +181,42 @@ type PageConversionStats struct {
 	CustomMetricTotal float64 `db:"custom_metric_total" json:"custom_metric_total"`
 }
 
+// MetaValueStats is the result type for meta value breakdown within a page conversion.
+type MetaValueStats struct {
+	Value             string  `json:"value"`
+	Events            int     `json:"events"`
+	EventVisitors     int     `json:"event_visitors"`
+	CR                float64 `json:"cr"`
+	CustomMetricAvg   float64 `db:"custom_metric_avg" json:"custom_metric_avg,omitempty"`
+	CustomMetricTotal float64 `db:"custom_metric_total" json:"custom_metric_total,omitempty"`
+}
+
+// PageConversionMetaStats is the result type for event conversion rate per page path with meta value breakdown.
+type PageConversionMetaStats struct {
+	Path          string           `json:"path"`
+	Hostname      string           `json:"hostname"`
+	Visitors      int              `json:"visitors"`
+	Views         int              `json:"views"`
+	Events        int              `json:"events"`
+	EventVisitors int              `json:"event_visitors"`
+	CR            float64          `json:"cr"`
+	MetaValues    []MetaValueStats `json:"meta_values"`
+}
+
+// PageConversionMetaRow is the internal flat row type for scanning page conversion meta data.
+type PageConversionMetaRow struct {
+	Path              string
+	Hostname          string
+	MetaValue         string
+	Visitors          int
+	Views             int
+	Events            int
+	EventVisitors     int
+	CR                float64
+	CustomMetricAvg   float64
+	CustomMetricTotal float64
+}
+
 // EventStats is the result type for custom events.
 type EventStats struct {
 	Name                   string   `db:"event_name" json:"name"`
