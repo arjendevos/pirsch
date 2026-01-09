@@ -517,6 +517,11 @@ func (pages *Pages) combinePageConversionMetaStats(pageStats []model.PageConvers
 
 		if metaValues == nil {
 			metaValues = []model.MetaValueStats{}
+		} else {
+			// Sort meta values by CR in descending order
+			sort.Slice(metaValues, func(i, j int) bool {
+				return metaValues[i].CR > metaValues[j].CR
+			})
 		}
 
 		results = append(results, model.PageConversionMetaStats{
