@@ -3,13 +3,14 @@ package referrer
 import (
 	"errors"
 	"fmt"
-	"github.com/pirsch-analytics/pirsch/v6/pkg/util"
 	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/pirsch-analytics/pirsch/v6/pkg/util"
 )
 
 var (
@@ -134,6 +135,13 @@ func Get(r *http.Request, ref, requestHostname string) (string, string, string) 
 
 func getFromHeaderOrQuery(r *http.Request) string {
 	fromHeader := strings.TrimSpace(r.Header.Get("Referer"))
+
+	// Some platforms (e.g., TikTok) append additional text after a newline character
+	// Example: "https://example.com\nJe verlaat TikTok en gaat naar een externe website"
+	// We only want the URL part before the newline
+	if idx := strings.IndexAny(fromHeader, "\n\r"); idx > 0 {
+		fromHeader = strings.TrimSpace(fromHeader[:idx])
+	}
 
 	for _, param := range QueryParams {
 		referrer := r.URL.Query().Get(param.param)
