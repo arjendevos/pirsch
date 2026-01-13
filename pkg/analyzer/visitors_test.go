@@ -3,13 +3,14 @@ package analyzer
 import (
 	"context"
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/pirsch-analytics/pirsch/v6/pkg"
 	"github.com/pirsch-analytics/pirsch/v6/pkg/db"
 	"github.com/pirsch-analytics/pirsch/v6/pkg/model"
 	"github.com/pirsch-analytics/pirsch/v6/pkg/util"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 func TestAnalyzer_ActiveVisitors(t *testing.T) {
@@ -71,6 +72,43 @@ func TestAnalyzer_ActiveVisitors(t *testing.T) {
 	_, _, err = analyzer.Visitors.Active(getMaxFilter(""), time.Minute*10)
 	assert.NoError(t, err)
 	_, _, err = analyzer.Visitors.Active(getMaxFilter("event"), time.Minute*10)
+	assert.NoError(t, err)
+}
+
+func TestAnalyzer_ActiveVisitorsByCountry(t *testing.T) {
+	db.CleanupDB(t, dbClient)
+	assert.NoError(t, dbClient.SavePageViews([]model.PageView{
+		{VisitorID: 1, Time: time.Now().Add(-time.Minute * 4), Path: "/"},
+		{VisitorID: 2, Time: time.Now().Add(-time.Minute * 3), Path: "/"},
+		{VisitorID: 3, Time: time.Now().Add(-time.Minute * 2), Path: "/"},
+		{VisitorID: 4, Time: time.Now().Add(-time.Minute), Path: "/"},
+	}))
+	saveSessions(t, [][]model.Session{
+		{
+			{Sign: 1, VisitorID: 1, Time: time.Now().Add(-time.Minute * 4), Start: time.Now(), CountryCode: "US"},
+			{Sign: 1, VisitorID: 2, Time: time.Now().Add(-time.Minute * 3), Start: time.Now(), CountryCode: "US"},
+			{Sign: 1, VisitorID: 3, Time: time.Now().Add(-time.Minute * 2), Start: time.Now(), CountryCode: "DE"},
+			{Sign: 1, VisitorID: 4, Time: time.Now().Add(-time.Minute), Start: time.Now(), CountryCode: "GB"},
+		},
+	})
+	analyzer := NewAnalyzer(dbClient)
+	visitors, count, err := analyzer.Visitors.ActiveByCountry(nil, time.Minute*10)
+	assert.NoError(t, err)
+	assert.Equal(t, 4, count)
+	assert.Len(t, visitors, 3)
+	assert.Equal(t, "US", visitors[0].CountryCode)
+	assert.Equal(t, 2, visitors[0].Visitors)
+	assert.Equal(t, "DE", visitors[1].CountryCode)
+	assert.Equal(t, 1, visitors[1].Visitors)
+	assert.Equal(t, "GB", visitors[2].CountryCode)
+	assert.Equal(t, 1, visitors[2].Visitors)
+	visitors, count, err = analyzer.Visitors.ActiveByCountry(&Filter{Country: []string{"US"}}, time.Minute*10)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, count)
+	assert.Len(t, visitors, 1)
+	assert.Equal(t, "US", visitors[0].CountryCode)
+	assert.Equal(t, 2, visitors[0].Visitors)
+	_, _, err = analyzer.Visitors.ActiveByCountry(getMaxFilter(""), time.Minute*10)
 	assert.NoError(t, err)
 }
 

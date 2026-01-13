@@ -145,6 +145,11 @@ func (client *ClientMock) SelectActiveVisitorStats(context.Context, bool, string
 	return nil, nil
 }
 
+// SelectActiveVisitorCountryStats implements the Store interface.
+func (client *ClientMock) SelectActiveVisitorCountryStats(context.Context, string, ...any) ([]model.ActiveVisitorCountryStats, error) {
+	return nil, nil
+}
+
 // GetTotalVisitorStats implements the Store interface.
 func (client *ClientMock) GetTotalVisitorStats(context.Context, string, bool, bool, ...any) (*model.TotalVisitorStats, error) {
 	return nil, nil

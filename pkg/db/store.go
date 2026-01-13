@@ -31,6 +31,9 @@ type Store interface {
 	// SelectActiveVisitorStats selects model.ActiveVisitorStats.
 	SelectActiveVisitorStats(context.Context, bool, string, ...any) ([]model.ActiveVisitorStats, error)
 
+	// SelectActiveVisitorCountryStats selects model.ActiveVisitorCountryStats.
+	SelectActiveVisitorCountryStats(context.Context, string, ...any) ([]model.ActiveVisitorCountryStats, error)
+
 	// GetTotalVisitorStats returns the model.TotalVisitorStats.
 	GetTotalVisitorStats(context.Context, string, bool, bool, ...any) (*model.TotalVisitorStats, error)
 

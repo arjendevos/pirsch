@@ -56,6 +56,33 @@ func (visitors *Visitors) Active(filter *Filter, duration time.Duration) ([]mode
 	return stats, count, nil
 }
 
+// ActiveByCountry returns the active visitors grouped by country and the total number of active visitors for a given duration.
+// Use time.Minute * 5, for example, to get the active visitors for the past 5 minutes.
+func (visitors *Visitors) ActiveByCountry(filter *Filter, duration time.Duration) ([]model.ActiveVisitorCountryStats, int, error) {
+	filter = visitors.analyzer.getFilter(filter)
+	filter.From = time.Now().UTC().Add(-duration)
+	filter.IncludeTime = true
+	fields := []Field{FieldCountry, FieldVisitors}
+	groupBy := []Field{FieldCountry}
+	orderBy := []Field{FieldVisitors, FieldCountry}
+
+	q, args := filter.buildQuery(fields, groupBy, orderBy, nil, "")
+	stats, err := visitors.store.SelectActiveVisitorCountryStats(filter.Ctx, q, args...)
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	q, args = filter.buildQuery([]Field{FieldVisitors}, nil, nil, nil, "")
+	count, err := visitors.store.Count(filter.Ctx, q, args...)
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return stats, count, nil
+}
+
 // Total returns the total visitor count, session count, bounce rate, views, CR, and average and total custom metric.
 func (visitors *Visitors) Total(filter *Filter) (*model.TotalVisitorStats, error) {
 	filter = visitors.analyzer.getFilter(filter)

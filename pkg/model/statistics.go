@@ -11,6 +11,12 @@ type ActiveVisitorStats struct {
 	Visitors int    `json:"visitors"`
 }
 
+// ActiveVisitorCountryStats is the result type for active visitor statistics grouped by country.
+type ActiveVisitorCountryStats struct {
+	CountryCode string `db:"country_code" json:"country_code"`
+	Visitors    int    `json:"visitors"`
+}
+
 // TotalVisitorStats is the result type for total visitor statistics.
 type TotalVisitorStats struct {
 	Visitors          int     `json:"visitors"`

@@ -512,6 +512,31 @@ func (client *Client) SelectActiveVisitorStats(ctx context.Context, includeTitle
 	return results, nil
 }
 
+// SelectActiveVisitorCountryStats implements the Store interface.
+func (client *Client) SelectActiveVisitorCountryStats(ctx context.Context, query string, args ...any) ([]model.ActiveVisitorCountryStats, error) {
+	rows, err := client.QueryContext(ctx, query, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer client.closeRows(rows)
+	var results []model.ActiveVisitorCountryStats
+
+	for rows.Next() {
+		var result model.ActiveVisitorCountryStats
+
+		if err := rows.Scan(&result.CountryCode,
+			&result.Visitors); err != nil {
+			return nil, err
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
 // GetTotalVisitorStats implements the Store interface.
 func (client *Client) GetTotalVisitorStats(ctx context.Context, query string, includeCR, includeCustomMetric bool, args ...any) (*model.TotalVisitorStats, error) {
 	result := new(model.TotalVisitorStats)
