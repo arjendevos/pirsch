@@ -14,6 +14,13 @@ type Events struct {
 // Events return the visitor count, views, and conversion rate for custom events.
 func (events *Events) Events(filter *Filter) ([]model.EventStats, error) {
 	filter = events.analyzer.getFilter(filter)
+
+	// Get total visitors with all filters applied (for CR calculation)
+	totalVisitors, err := events.getTotalVisitors(filter)
+	if err != nil {
+		return nil, err
+	}
+
 	q, args := filter.buildQuery([]Field{
 		FieldEventName,
 		FieldCount,
@@ -34,6 +41,13 @@ func (events *Events) Events(filter *Filter) ([]model.EventStats, error) {
 		return nil, err
 	}
 
+	// Calculate CR for each event based on filtered total visitors
+	for i := range stats {
+		if totalVisitors > 0 {
+			stats[i].CR = float64(stats[i].Visitors) / float64(totalVisitors)
+		}
+	}
+
 	return stats, nil
 }
 
@@ -44,6 +58,12 @@ func (events *Events) Breakdown(filter *Filter) ([]model.EventStats, error) {
 
 	if len(filter.EventName) == 0 || len(filter.EventMetaKey) == 0 {
 		return []model.EventStats{}, nil
+	}
+
+	// Get total visitors with all filters applied (for CR calculation)
+	totalVisitors, err := events.getTotalVisitors(filter)
+	if err != nil {
+		return nil, err
 	}
 
 	q, args := filter.buildQuery([]Field{
@@ -65,6 +85,13 @@ func (events *Events) Breakdown(filter *Filter) ([]model.EventStats, error) {
 
 	if err != nil {
 		return nil, err
+	}
+
+	// Calculate CR for each breakdown based on filtered total visitors
+	for i := range stats {
+		if totalVisitors > 0 {
+			stats[i].CR = float64(stats[i].Visitors) / float64(totalVisitors)
+		}
 	}
 
 	return stats, nil
@@ -92,4 +119,23 @@ func (events *Events) List(filter *Filter) ([]model.EventListStats, error) {
 	}
 
 	return stats, nil
+}
+
+// getTotalVisitors returns the total number of unique visitors for the given filter.
+// This respects all filters EXCEPT event-specific filters (event name, event meta)
+// so that CR is calculated as: event_visitors / total_session_visitors
+func (events *Events) getTotalVisitors(filter *Filter) (int, error) {
+	// Clone the filter and clear Sort and event-specific filters
+	filterCopy := *filter
+	filterCopy.Sort = nil
+	filterCopy.EventName = nil
+	filterCopy.EventMetaKey = nil
+	filterCopy.EventMeta = nil
+
+	// Build a query to get total unique visitors from session table with non-event filters
+	q, args := filterCopy.buildQuery([]Field{
+		FieldVisitors,
+	}, nil, nil, nil, "")
+
+	return events.store.GetTotalUniqueVisitorStats(filterCopy.Ctx, q, args...)
 }

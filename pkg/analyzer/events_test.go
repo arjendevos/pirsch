@@ -1,13 +1,14 @@
 package analyzer
 
 import (
+	"testing"
+	"time"
+
 	"github.com/pirsch-analytics/pirsch/v6/pkg"
 	"github.com/pirsch-analytics/pirsch/v6/pkg/db"
 	"github.com/pirsch-analytics/pirsch/v6/pkg/model"
 	"github.com/pirsch-analytics/pirsch/v6/pkg/util"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 func TestAnalyzer_Events(t *testing.T) {
@@ -65,8 +66,8 @@ func TestAnalyzer_Events(t *testing.T) {
 	assert.Equal(t, 4, stats[1].Visitors)
 	assert.Equal(t, 6, stats[0].Views)
 	assert.Equal(t, 5, stats[1].Views)
-	assert.InDelta(t, 0.5, stats[0].CR, 0.001)
-	assert.InDelta(t, 0.4, stats[1].CR, 0.001)
+	assert.InDelta(t, 1.0, stats[0].CR, 0.001)
+	assert.InDelta(t, 0.8, stats[1].CR, 0.001)
 	assert.InDelta(t, 4, stats[0].AverageDurationSeconds, 0.001)
 	assert.InDelta(t, 5, stats[1].AverageDurationSeconds, 0.001)
 	assert.Len(t, stats[0].MetaKeys, 3)
@@ -92,8 +93,8 @@ func TestAnalyzer_Events(t *testing.T) {
 	assert.Equal(t, 4, stats[1].Visitors)
 	assert.Equal(t, 6, stats[0].Views)
 	assert.Equal(t, 5, stats[1].Views)
-	assert.InDelta(t, 0.5, stats[0].CR, 0.001)
-	assert.InDelta(t, 0.4, stats[1].CR, 0.001)
+	assert.InDelta(t, 1.0, stats[0].CR, 0.001)
+	assert.InDelta(t, 0.8, stats[1].CR, 0.001)
 	assert.InDelta(t, 4, stats[0].AverageDurationSeconds, 0.001)
 	assert.InDelta(t, 5, stats[1].AverageDurationSeconds, 0.001)
 	assert.Len(t, stats[0].MetaKeys, 3)
@@ -105,7 +106,7 @@ func TestAnalyzer_Events(t *testing.T) {
 	assert.Equal(t, 6, stats[0].Count)
 	assert.Equal(t, 5, stats[0].Visitors)
 	assert.Equal(t, 6, stats[0].Views)
-	assert.InDelta(t, 0.5, stats[0].CR, 0.001)
+	assert.InDelta(t, 1.0, stats[0].CR, 0.001)
 	assert.InDelta(t, 4, stats[0].AverageDurationSeconds, 0.001)
 	assert.Len(t, stats[0].MetaKeys, 3)
 	stats, err = analyzer.Events.Events(&Filter{EventName: []string{"does-not-exist"}})
@@ -136,8 +137,8 @@ func TestAnalyzer_Events(t *testing.T) {
 	assert.Equal(t, 1, stats[1].Visitors)
 	assert.Equal(t, 2, stats[0].Views)
 	assert.Equal(t, 1, stats[1].Views)
-	assert.InDelta(t, 0.2, stats[0].CR, 0.001)
-	assert.InDelta(t, 0.1, stats[1].CR, 0.001)
+	assert.InDelta(t, 0.5, stats[0].CR, 0.001)
+	assert.InDelta(t, 0.25, stats[1].CR, 0.001)
 	assert.InDelta(t, 3, stats[0].AverageDurationSeconds, 0.001)
 	assert.InDelta(t, 8, stats[1].AverageDurationSeconds, 0.001)
 	assert.Equal(t, "in", stats[0].MetaValue)
@@ -156,7 +157,7 @@ func TestAnalyzer_Events(t *testing.T) {
 	assert.Equal(t, 2, stats[0].Count)
 	assert.Equal(t, 2, stats[0].Visitors)
 	assert.Equal(t, 2, stats[0].Views)
-	assert.InDelta(t, 0.2, stats[0].CR, 0.001)
+	assert.InDelta(t, 0.4, stats[0].CR, 0.001)
 	assert.InDelta(t, 8, stats[0].AverageDurationSeconds, 0.001)
 	assert.Equal(t, "in", stats[0].MetaValue)
 	stats, err = analyzer.Events.Breakdown(&Filter{EventName: []string{"event2"}, EventMetaKey: []string{"price"}})
@@ -170,8 +171,8 @@ func TestAnalyzer_Events(t *testing.T) {
 	assert.Equal(t, 1, stats[1].Visitors)
 	assert.Equal(t, 2, stats[0].Views)
 	assert.Equal(t, 1, stats[1].Views)
-	assert.InDelta(t, 0.2, stats[0].CR, 0.001)
-	assert.InDelta(t, 0.1, stats[1].CR, 0.001)
+	assert.InDelta(t, 0.4, stats[0].CR, 0.001)
+	assert.InDelta(t, 0.2, stats[1].CR, 0.001)
 	assert.InDelta(t, 5, stats[0].AverageDurationSeconds, 0.001)
 	assert.InDelta(t, 9, stats[1].AverageDurationSeconds, 0.001)
 	assert.Equal(t, "34.56", stats[0].MetaValue)
@@ -183,7 +184,7 @@ func TestAnalyzer_Events(t *testing.T) {
 	assert.Equal(t, 1, stats[0].Count)
 	assert.Equal(t, 1, stats[0].Visitors)
 	assert.Equal(t, 1, stats[0].Views)
-	assert.InDelta(t, 0.1, stats[0].CR, 0.001)
+	assert.InDelta(t, 0.2, stats[0].CR, 0.001)
 	assert.InDelta(t, 9, stats[0].AverageDurationSeconds, 0.001)
 	assert.Equal(t, "param", stats[0].MetaValue)
 	stats, err = analyzer.Events.Breakdown(&Filter{
@@ -197,7 +198,7 @@ func TestAnalyzer_Events(t *testing.T) {
 	assert.Equal(t, 1, stats[0].Count)
 	assert.Equal(t, 1, stats[0].Visitors)
 	assert.Equal(t, 1, stats[0].Views)
-	assert.InDelta(t, 0.1, stats[0].CR, 0.001)
+	assert.InDelta(t, 1.0, stats[0].CR, 0.001)
 	assert.Equal(t, "out", stats[0].MetaValue)
 	stats, err = analyzer.Events.Breakdown(&Filter{EventName: []string{"does-not-exist"}, EventMetaKey: []string{"status"}})
 	assert.NoError(t, err)
@@ -241,8 +242,8 @@ func TestAnalyzer_EventsSortCR(t *testing.T) {
 	assert.Len(t, stats, 2)
 	assert.Equal(t, "event2", stats[0].Name)
 	assert.Equal(t, "event1", stats[1].Name)
-	assert.InDelta(t, 0.1, stats[0].CR, 0.001)
-	assert.InDelta(t, 0.3, stats[1].CR, 0.001)
+	assert.InDelta(t, 0.333, stats[0].CR, 0.001)
+	assert.InDelta(t, 1.0, stats[1].CR, 0.001)
 	stats, err = analyzer.Events.Events(&Filter{Sort: []Sort{
 		{
 			Field:     FieldCR,
@@ -253,8 +254,8 @@ func TestAnalyzer_EventsSortCR(t *testing.T) {
 	assert.Len(t, stats, 2)
 	assert.Equal(t, "event1", stats[0].Name)
 	assert.Equal(t, "event2", stats[1].Name)
-	assert.InDelta(t, 0.3, stats[0].CR, 0.001)
-	assert.InDelta(t, 0.1, stats[1].CR, 0.001)
+	assert.InDelta(t, 1.0, stats[0].CR, 0.001)
+	assert.InDelta(t, 0.333, stats[1].CR, 0.001)
 }
 
 func TestAnalyzer_EventList(t *testing.T) {
