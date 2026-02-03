@@ -139,8 +139,8 @@ func getFromHeaderOrQuery(r *http.Request) string {
 	// Some platforms (e.g., TikTok) append additional text after a newline character
 	// Example: "https://example.com\nJe verlaat TikTok en gaat naar een externe website"
 	// We only want the URL part before the newline
-	if idx := strings.IndexAny(fromHeader, "\n\r"); idx > 0 {
-		fromHeader = strings.TrimSpace(fromHeader[:idx])
+	if index := strings.IndexAny(fromHeader, "\n\r"); index > 0 {
+		fromHeader = strings.TrimSpace(fromHeader[:index])
 	}
 
 	for _, param := range QueryParams {
