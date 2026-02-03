@@ -1077,7 +1077,7 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 		query += " WHERE e.events > 0"
 	}
 
-	query += " ORDER BY cr DESC, visitors DESC, pv.path ASC"
+	query += " ORDER BY events DESC, cr DESC, visitors DESC, pv.path ASC"
 
 	// Add pagination
 	if filter.Limit > 0 {
@@ -1122,7 +1122,7 @@ func (pages *Pages) buildConversionsByPathBreakdownQuery(filter *Filter) (string
 		GROUP BY path, v
 	) e ON pv.path = e.path
 	WHERE e.meta_value IS NOT NULL AND e.meta_value != ''
-	ORDER BY pv.path ASC, e.meta_value ASC`,
+	ORDER BY events DESC, pv.path ASC, e.meta_value ASC`,
 		parts.sampleFactor, parts.sampleFactor, parts.sampleFactor,
 		parts.sampleClause, pvWhere,
 		parts.sampleClause, evWhere)
