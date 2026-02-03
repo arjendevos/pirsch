@@ -198,6 +198,36 @@ type PathConversionStats struct {
 	CR       float64 `json:"cr"`
 }
 
+// PathMetaValueStats is the result type for meta value breakdown within a path conversion.
+// This is a simpler version without custom metrics.
+type PathMetaValueStats struct {
+	Value  string  `json:"value"`
+	Events int     `json:"events"`
+	CR     float64 `json:"cr"`
+}
+
+// PathConversionMetaStats is the result type for event conversion rate per path with meta value breakdown.
+type PathConversionMetaStats struct {
+	Path       string               `json:"path"`
+	Hostname   string               `json:"hostname"`
+	Visitors   int                  `json:"visitors"`
+	Views      int                  `json:"views"`
+	Events     int                  `json:"events"`
+	CR         float64              `json:"cr"`
+	MetaValues []PathMetaValueStats `json:"meta_values"`
+}
+
+// PathConversionMetaRow is the internal flat row type for scanning path conversion meta data.
+type PathConversionMetaRow struct {
+	Path      string
+	Hostname  string
+	MetaValue string
+	Visitors  int
+	Views     int
+	Events    int
+	CR        float64
+}
+
 // MetaValueStats is the result type for meta value breakdown within a page conversion.
 type MetaValueStats struct {
 	Value             string  `json:"value"`

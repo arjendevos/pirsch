@@ -1552,6 +1552,36 @@ func (client *Client) SelectPathConversionStats(ctx context.Context, query strin
 	return results, nil
 }
 
+// SelectPathConversionMetaStats implements the Store interface.
+func (client *Client) SelectPathConversionMetaStats(ctx context.Context, query string, args ...any) ([]model.PathConversionMetaRow, error) {
+	rows, err := client.QueryContext(ctx, query, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer client.closeRows(rows)
+	var results []model.PathConversionMetaRow
+
+	for rows.Next() {
+		var result model.PathConversionMetaRow
+
+		if err := rows.Scan(&result.Path,
+			&result.Hostname,
+			&result.Visitors,
+			&result.Views,
+			&result.Events,
+			&result.CR,
+			&result.MetaValue); err != nil {
+			return nil, err
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
 // SelectPageConversionMetaStats implements the Store interface.
 func (client *Client) SelectPageConversionMetaStats(ctx context.Context, includeCustomMetric bool, query string, args ...any) ([]model.PageConversionMetaRow, error) {
 	rows, err := client.QueryContext(ctx, query, args...)

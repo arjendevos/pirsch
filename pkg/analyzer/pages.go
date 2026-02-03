@@ -704,52 +704,162 @@ func (pages *Pages) ConversionsByPath(filter *Filter) ([]model.PathConversionSta
 	return stats, nil
 }
 
-func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) {
-	var args []any
+// ConversionsByPathBreakdown returns the event conversion stats grouped by path with meta value breakdown.
+// Shows what percentage of visitors to each path triggered the specified event, broken down by meta key values.
+// Requires filter.EventName and filter.EventMetaKey to be set.
+func (pages *Pages) ConversionsByPathBreakdown(filter *Filter) ([]model.PathConversionMetaStats, error) {
+	if len(filter.EventName) == 0 || len(filter.EventMetaKey) == 0 {
+		return []model.PathConversionMetaStats{}, nil
+	}
+
+	filter = pages.analyzer.getFilter(filter)
+
+	// Step 1: Get paginated paths with path-level totals (respects LIMIT/OFFSET)
+	q, args := pages.buildConversionsByPathQuery(filter)
+	pathStats, err := pages.store.SelectPathConversionStats(filter.Ctx, q, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(pathStats) == 0 {
+		return []model.PathConversionMetaStats{}, nil
+	}
+
+	// Step 2: Get meta value breakdown for those specific paths (no pagination)
+	paths := make([]string, len(pathStats))
+	for i, p := range pathStats {
+		paths[i] = p.Path
+	}
+
+	breakdownFilter := pages.analyzer.getFilter(filter)
+	breakdownFilter.Path = nil
+	breakdownFilter.AnyPath = paths
+	breakdownFilter.Offset = 0
+	breakdownFilter.Limit = 0
+
+	q, args = pages.buildConversionsByPathBreakdownQuery(breakdownFilter)
+	metaRows, err := pages.store.SelectPathConversionMetaStats(filter.Ctx, q, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 3: Combine path totals with meta breakdown
+	return pages.combinePathConversionMetaStats(pathStats, metaRows), nil
+}
+
+// combinePathConversionMetaStats combines path-level stats with meta value breakdown rows.
+func (pages *Pages) combinePathConversionMetaStats(pathStats []model.PathConversionStats, metaRows []model.PathConversionMetaRow) []model.PathConversionMetaStats {
+	// Build meta values lookup by path+hostname
+	metaLookup := make(map[string][]model.PathMetaValueStats)
+
+	for _, row := range metaRows {
+		key := row.Path + "\x00" + row.Hostname
+		metaLookup[key] = append(metaLookup[key], model.PathMetaValueStats{
+			Value:  row.MetaValue,
+			Events: row.Events,
+			CR:     row.CR,
+		})
+	}
+
+	// Build results maintaining path order from first query
+	results := make([]model.PathConversionMetaStats, 0, len(pathStats))
+
+	for _, path := range pathStats {
+		key := path.Path + "\x00" + path.Hostname
+		metaValues := metaLookup[key]
+
+		if metaValues == nil {
+			metaValues = []model.PathMetaValueStats{}
+		} else {
+			// Sort meta values by CR in descending order
+			sort.Slice(metaValues, func(i, j int) bool {
+				return metaValues[i].CR > metaValues[j].CR
+			})
+		}
+
+		results = append(results, model.PathConversionMetaStats{
+			Path:       path.Path,
+			Hostname:   path.Hostname,
+			Visitors:   path.Visitors,
+			Views:      path.Views,
+			Events:     path.Events,
+			CR:         path.CR,
+			MetaValues: metaValues,
+		})
+	}
+
+	return results
+}
+
+// pathConversionQueryParts holds the reusable parts for path conversion queries.
+type pathConversionQueryParts struct {
+	clientClause string
+	clientArgs   []any
+	timeClause   string
+	timeArgs     []any
+	sampleClause string
+	sampleFactor string
+}
+
+// buildPathConversionQueryParts builds the common query parts for path conversion queries.
+func (pages *Pages) buildPathConversionQueryParts(filter *Filter) pathConversionQueryParts {
+	parts := pathConversionQueryParts{}
 	tz := filter.Timezone.String()
 
 	// Build client IDs clause
 	clientIdsStr, clientIdArgs := clientIdsToString(filter.ClientIDs)
-	clientClause := ""
 	if len(clientIdArgs) > 0 {
-		clientClause = "client_id IN (" + clientIdsStr + ") "
+		parts.clientClause = "client_id IN (" + clientIdsStr + ") "
+		parts.clientArgs = clientIdArgs
 	}
 
 	// Build time clauses
-	timeClause := ""
-	var timeArgs []any
 	if !filter.From.IsZero() && !filter.To.IsZero() && filter.From.Equal(filter.To) {
-		timeArgs = append(timeArgs, filter.From.Format("2006-01-02"))
-		timeClause = fmt.Sprintf("toDate(time, '%s') = toDate(?) ", tz)
+		parts.timeArgs = append(parts.timeArgs, filter.From.Format("2006-01-02"))
+		parts.timeClause = fmt.Sprintf("toDate(time, '%s') = toDate(?) ", tz)
 	} else {
 		if !filter.From.IsZero() {
-			timeArgs = append(timeArgs, filter.From.Format("2006-01-02"))
-			timeClause += fmt.Sprintf("toDate(time, '%s') >= toDate(?) ", tz)
+			parts.timeArgs = append(parts.timeArgs, filter.From.Format("2006-01-02"))
+			parts.timeClause += fmt.Sprintf("toDate(time, '%s') >= toDate(?) ", tz)
 		}
 		if !filter.To.IsZero() {
-			if timeClause != "" {
-				timeClause += "AND "
+			if parts.timeClause != "" {
+				parts.timeClause += "AND "
 			}
-			timeArgs = append(timeArgs, filter.To.Format("2006-01-02"))
-			timeClause += fmt.Sprintf("toDate(time, '%s') <= toDate(?) ", tz)
+			parts.timeArgs = append(parts.timeArgs, filter.To.Format("2006-01-02"))
+			parts.timeClause += fmt.Sprintf("toDate(time, '%s') <= toDate(?) ", tz)
 		}
 	}
 
-	// Build WHERE clause for page_view subquery
+	// Build sample clause
+	if filter.Sample > 0 {
+		parts.sampleClause = fmt.Sprintf("SAMPLE %d ", filter.Sample)
+		parts.sampleFactor = "*any(_sample_factor)"
+	}
+
+	return parts
+}
+
+// buildPathConversionPVWhere builds the WHERE clause and args for the page_view subquery.
+func (pages *Pages) buildPathConversionPVWhere(filter *Filter, parts pathConversionQueryParts) (string, []any) {
+	var args []any
 	pvWhere := "WHERE "
-	if clientClause != "" {
-		pvWhere += clientClause
-		args = append(args, clientIdArgs...)
-		if timeClause != "" {
-			pvWhere += "AND " + timeClause
-			args = append(args, timeArgs...)
+
+	if parts.clientClause != "" {
+		pvWhere += parts.clientClause
+		args = append(args, parts.clientArgs...)
+		if parts.timeClause != "" {
+			pvWhere += "AND " + parts.timeClause
+			args = append(args, parts.timeArgs...)
 		}
-	} else if timeClause != "" {
-		pvWhere += timeClause
-		args = append(args, timeArgs...)
+	} else if parts.timeClause != "" {
+		pvWhere += parts.timeClause
+		args = append(args, parts.timeArgs...)
 	}
 
-	// Add hostname filter to page_view
+	// Add hostname filter
 	if len(filter.Hostname) > 0 {
 		hostnamePlaceholders := make([]string, len(filter.Hostname))
 		for i := range filter.Hostname {
@@ -762,7 +872,7 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 		pvWhere += "hostname IN (" + strings.Join(hostnamePlaceholders, ",") + ") "
 	}
 
-	// Add path filters to page_view
+	// Add path filters
 	if len(filter.Path) > 0 {
 		pathPlaceholders := make([]string, len(filter.Path))
 		for i := range filter.Path {
@@ -798,7 +908,7 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 		pvWhere += "path IN (" + strings.Join(pathPlaceholders, ",") + ") "
 	}
 
-	// Add search filters to page_view
+	// Add search filters
 	for _, search := range filter.Search {
 		if search.Input == "" {
 			continue
@@ -817,18 +927,24 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 		}
 	}
 
-	// Build WHERE clause for event subquery
+	return pvWhere, args
+}
+
+// buildPathConversionEvWhere builds the WHERE clause and args for the event subquery.
+func (pages *Pages) buildPathConversionEvWhere(filter *Filter, parts pathConversionQueryParts, includeMetaKey bool) (string, []any) {
+	var args []any
 	evWhere := "WHERE "
-	if clientClause != "" {
-		evWhere += clientClause
-		args = append(args, clientIdArgs...)
-		if timeClause != "" {
-			evWhere += "AND " + timeClause
-			args = append(args, timeArgs...)
+
+	if parts.clientClause != "" {
+		evWhere += parts.clientClause
+		args = append(args, parts.clientArgs...)
+		if parts.timeClause != "" {
+			evWhere += "AND " + parts.timeClause
+			args = append(args, parts.timeArgs...)
 		}
-	} else if timeClause != "" {
-		evWhere += timeClause
-		args = append(args, timeArgs...)
+	} else if parts.timeClause != "" {
+		evWhere += parts.timeClause
+		args = append(args, parts.timeArgs...)
 	}
 
 	// Add event_name filter
@@ -842,7 +958,31 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 	}
 	evWhere += "event_name IN (" + strings.Join(eventPlaceholders, ",") + ") "
 
-	// Add path filters to event
+	// Add event meta key filter for breakdown queries
+	// Uses 'k' alias from ARRAY JOIN event_meta_keys AS k, event_meta_values AS v
+	if includeMetaKey && len(filter.EventMetaKey) > 0 {
+		metaKeyPlaceholders := make([]string, len(filter.EventMetaKey))
+		for i := range filter.EventMetaKey {
+			metaKeyPlaceholders[i] = "?"
+			args = append(args, filter.EventMetaKey[i])
+		}
+		if evWhere != "WHERE " {
+			evWhere += "AND "
+		}
+		evWhere += "k IN (" + strings.Join(metaKeyPlaceholders, ",") + ") "
+	}
+
+	// Add event meta key-value filters (for filtering by specific meta values)
+	// Uses event_meta_values[indexOf(event_meta_keys, key)] = value pattern
+	for key, value := range filter.EventMeta {
+		if evWhere != "WHERE " {
+			evWhere += "AND "
+		}
+		args = append(args, key, value)
+		evWhere += "event_meta_values[indexOf(event_meta_keys, ?)] = ? "
+	}
+
+	// Add path filters
 	if len(filter.Path) > 0 {
 		pathPlaceholders := make([]string, len(filter.Path))
 		for i := range filter.Path {
@@ -878,7 +1018,7 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 		evWhere += "path IN (" + strings.Join(pathPlaceholders, ",") + ") "
 	}
 
-	// Add search filters to event
+	// Add search filters
 	for _, search := range filter.Search {
 		if search.Input == "" {
 			continue
@@ -897,13 +1037,16 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 		}
 	}
 
-	// Build sample clause
-	sampleClause := ""
-	sampleFactor := ""
-	if filter.Sample > 0 {
-		sampleClause = fmt.Sprintf("SAMPLE %d ", filter.Sample)
-		sampleFactor = "*any(_sample_factor)"
-	}
+	return evWhere, args
+}
+
+func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) {
+	parts := pages.buildPathConversionQueryParts(filter)
+
+	pvWhere, pvArgs := pages.buildPathConversionPVWhere(filter, parts)
+	evWhere, evArgs := pages.buildPathConversionEvWhere(filter, parts, false)
+
+	args := append(pvArgs, evArgs...)
 
 	// Build the query
 	query := fmt.Sprintf(`SELECT 
@@ -924,11 +1067,17 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 		FROM "event" %s
 		%s
 		GROUP BY path
-	) e ON pv.path = e.path
-	ORDER BY cr DESC, visitors DESC, pv.path ASC`,
-		sampleFactor, sampleFactor, sampleFactor,
-		sampleClause, pvWhere,
-		sampleClause, evWhere)
+	) e ON pv.path = e.path`,
+		parts.sampleFactor, parts.sampleFactor, parts.sampleFactor,
+		parts.sampleClause, pvWhere,
+		parts.sampleClause, evWhere)
+
+	// When filtering by EventMeta, only show paths that have matching events
+	if len(filter.EventMeta) > 0 {
+		query += " WHERE e.events > 0"
+	}
+
+	query += " ORDER BY cr DESC, visitors DESC, pv.path ASC"
 
 	// Add pagination
 	if filter.Limit > 0 {
@@ -937,6 +1086,46 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 	if filter.Offset > 0 {
 		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
 	}
+
+	return query, args
+}
+
+func (pages *Pages) buildConversionsByPathBreakdownQuery(filter *Filter) (string, []any) {
+	parts := pages.buildPathConversionQueryParts(filter)
+
+	pvWhere, pvArgs := pages.buildPathConversionPVWhere(filter, parts)
+	evWhere, evArgs := pages.buildPathConversionEvWhere(filter, parts, true)
+
+	args := append(pvArgs, evArgs...)
+
+	// Build the query with meta value breakdown
+	// Uses ARRAY JOIN with aliases: event_meta_keys AS k, event_meta_values AS v
+	query := fmt.Sprintf(`SELECT 
+		pv.path, 
+		pv.hostname, 
+		toUInt64(greatest(pv.visitors%s, 0)) AS visitors, 
+		toUInt64(greatest(pv.views%s, 0)) AS views, 
+		toUInt64(greatest(coalesce(e.events, 0)%s, 0)) AS events,
+		if(pv.visitors > 0, coalesce(e.events, 0) / pv.visitors, 0) AS cr,
+		e.meta_value
+	FROM (
+		SELECT path, hostname, uniq(visitor_id) AS visitors, count(*) AS views
+		FROM "page_view" %s
+		%s
+		GROUP BY path, hostname
+	) pv
+	LEFT JOIN (
+		SELECT path, v AS meta_value, count(*) AS events
+		FROM "event" %s
+		ARRAY JOIN event_meta_keys AS k, event_meta_values AS v
+		%s
+		GROUP BY path, v
+	) e ON pv.path = e.path
+	WHERE e.meta_value IS NOT NULL AND e.meta_value != ''
+	ORDER BY pv.path ASC, e.meta_value ASC`,
+		parts.sampleFactor, parts.sampleFactor, parts.sampleFactor,
+		parts.sampleClause, pvWhere,
+		parts.sampleClause, evWhere)
 
 	return query, args
 }
