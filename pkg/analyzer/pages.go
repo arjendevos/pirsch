@@ -762,6 +762,61 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 		pvWhere += "hostname IN (" + strings.Join(hostnamePlaceholders, ",") + ") "
 	}
 
+	// Add path filters to page_view
+	if len(filter.Path) > 0 {
+		pathPlaceholders := make([]string, len(filter.Path))
+		for i := range filter.Path {
+			pathPlaceholders[i] = "?"
+			args = append(args, filter.Path[i])
+		}
+		if pvWhere != "WHERE " {
+			pvWhere += "AND "
+		}
+		pvWhere += "path IN (" + strings.Join(pathPlaceholders, ",") + ") "
+	} else if len(filter.PathPattern) > 0 {
+		for _, pattern := range filter.PathPattern {
+			if pvWhere != "WHERE " {
+				pvWhere += "AND "
+			}
+			if strings.HasPrefix(pattern, "!") {
+				args = append(args, pattern[1:])
+				pvWhere += "match(path, ?) = 0 "
+			} else {
+				args = append(args, pattern)
+				pvWhere += "match(path, ?) = 1 "
+			}
+		}
+	} else if len(filter.AnyPath) > 0 {
+		pathPlaceholders := make([]string, len(filter.AnyPath))
+		for i := range filter.AnyPath {
+			pathPlaceholders[i] = "?"
+			args = append(args, filter.AnyPath[i])
+		}
+		if pvWhere != "WHERE " {
+			pvWhere += "AND "
+		}
+		pvWhere += "path IN (" + strings.Join(pathPlaceholders, ",") + ") "
+	}
+
+	// Add search filters to page_view
+	for _, search := range filter.Search {
+		if search.Input == "" {
+			continue
+		}
+		if pvWhere != "WHERE " {
+			pvWhere += "AND "
+		}
+		if search.Field.Name == FieldPath.Name || search.Field.Name == FieldHostname.Name {
+			if strings.HasPrefix(search.Input, "!") {
+				args = append(args, fmt.Sprintf("%%%s%%", search.Input[1:]))
+				pvWhere += fmt.Sprintf("ilike(%s, ?) = 0 ", search.Field.Name)
+			} else {
+				args = append(args, fmt.Sprintf("%%%s%%", search.Input))
+				pvWhere += fmt.Sprintf("ilike(%s, ?) = 1 ", search.Field.Name)
+			}
+		}
+	}
+
 	// Build WHERE clause for event subquery
 	evWhere := "WHERE "
 	if clientClause != "" {
@@ -786,6 +841,61 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 		evWhere += "AND "
 	}
 	evWhere += "event_name IN (" + strings.Join(eventPlaceholders, ",") + ") "
+
+	// Add path filters to event
+	if len(filter.Path) > 0 {
+		pathPlaceholders := make([]string, len(filter.Path))
+		for i := range filter.Path {
+			pathPlaceholders[i] = "?"
+			args = append(args, filter.Path[i])
+		}
+		if evWhere != "WHERE " {
+			evWhere += "AND "
+		}
+		evWhere += "path IN (" + strings.Join(pathPlaceholders, ",") + ") "
+	} else if len(filter.PathPattern) > 0 {
+		for _, pattern := range filter.PathPattern {
+			if evWhere != "WHERE " {
+				evWhere += "AND "
+			}
+			if strings.HasPrefix(pattern, "!") {
+				args = append(args, pattern[1:])
+				evWhere += "match(path, ?) = 0 "
+			} else {
+				args = append(args, pattern)
+				evWhere += "match(path, ?) = 1 "
+			}
+		}
+	} else if len(filter.AnyPath) > 0 {
+		pathPlaceholders := make([]string, len(filter.AnyPath))
+		for i := range filter.AnyPath {
+			pathPlaceholders[i] = "?"
+			args = append(args, filter.AnyPath[i])
+		}
+		if evWhere != "WHERE " {
+			evWhere += "AND "
+		}
+		evWhere += "path IN (" + strings.Join(pathPlaceholders, ",") + ") "
+	}
+
+	// Add search filters to event
+	for _, search := range filter.Search {
+		if search.Input == "" {
+			continue
+		}
+		if evWhere != "WHERE " {
+			evWhere += "AND "
+		}
+		if search.Field.Name == FieldPath.Name {
+			if strings.HasPrefix(search.Input, "!") {
+				args = append(args, fmt.Sprintf("%%%s%%", search.Input[1:]))
+				evWhere += "ilike(path, ?) = 0 "
+			} else {
+				args = append(args, fmt.Sprintf("%%%s%%", search.Input))
+				evWhere += "ilike(path, ?) = 1 "
+			}
+		}
+	}
 
 	// Build sample clause
 	sampleClause := ""
