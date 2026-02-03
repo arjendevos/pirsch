@@ -250,6 +250,11 @@ func (client *ClientMock) SelectPageConversionStats(context.Context, bool, bool,
 	return nil, nil
 }
 
+// SelectPathConversionStats implements the Store interface.
+func (client *ClientMock) SelectPathConversionStats(context.Context, string, ...any) ([]model.PathConversionStats, error) {
+	return nil, nil
+}
+
 // SelectPageConversionMetaStats implements the Store interface.
 func (client *ClientMock) SelectPageConversionMetaStats(context.Context, bool, string, ...any) ([]model.PageConversionMetaRow, error) {
 	return nil, nil

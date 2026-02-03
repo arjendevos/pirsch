@@ -187,6 +187,18 @@ type PageConversionStats struct {
 	CustomMetricTotal float64 `db:"custom_metric_total" json:"custom_metric_total"`
 }
 
+// PathConversionStats is the result type for event conversion rate grouped by path and hostname.
+// Returns the exact fields: path, hostname, visitors, views, events, event_visitors, and cr.
+type PathConversionStats struct {
+	Path          string  `json:"path"`
+	Hostname      string  `json:"hostname"`
+	Visitors      int     `json:"visitors"`
+	Views         int     `json:"views"`
+	Events        int     `json:"events"`
+	EventVisitors int     `json:"event_visitors"`
+	CR            float64 `json:"cr"`
+}
+
 // MetaValueStats is the result type for meta value breakdown within a page conversion.
 type MetaValueStats struct {
 	Value             string  `json:"value"`

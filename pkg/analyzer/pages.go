@@ -684,3 +684,150 @@ func getPathList[T interface{ GetPath() string }](stats []T) []string {
 
 	return pathList
 }
+
+// ConversionsByPath returns the event conversion stats grouped by path and hostname.
+// Shows visitors, views, and total events (sum of event counts) for each path.
+// Requires filter.EventName to be set.
+func (pages *Pages) ConversionsByPath(filter *Filter) ([]model.PathConversionStats, error) {
+	if len(filter.EventName) == 0 {
+		return []model.PathConversionStats{}, nil
+	}
+
+	filter = pages.analyzer.getFilter(filter)
+	q, args := pages.buildConversionsByPathQuery(filter)
+	stats, err := pages.store.SelectPathConversionStats(filter.Ctx, q, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
+func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) {
+	var args []any
+	tz := filter.Timezone.String()
+
+	// Build client IDs clause
+	clientIdsStr, clientIdArgs := clientIdsToString(filter.ClientIDs)
+	clientClause := ""
+	if len(clientIdArgs) > 0 {
+		clientClause = "client_id IN (" + clientIdsStr + ") "
+	}
+
+	// Build time clauses
+	timeClause := ""
+	var timeArgs []any
+	if !filter.From.IsZero() && !filter.To.IsZero() && filter.From.Equal(filter.To) {
+		timeArgs = append(timeArgs, filter.From.Format("2006-01-02"))
+		timeClause = fmt.Sprintf("toDate(time, '%s') = toDate(?) ", tz)
+	} else {
+		if !filter.From.IsZero() {
+			timeArgs = append(timeArgs, filter.From.Format("2006-01-02"))
+			timeClause += fmt.Sprintf("toDate(time, '%s') >= toDate(?) ", tz)
+		}
+		if !filter.To.IsZero() {
+			if timeClause != "" {
+				timeClause += "AND "
+			}
+			timeArgs = append(timeArgs, filter.To.Format("2006-01-02"))
+			timeClause += fmt.Sprintf("toDate(time, '%s') <= toDate(?) ", tz)
+		}
+	}
+
+	// Build WHERE clause for page_view subquery
+	pvWhere := "WHERE "
+	if clientClause != "" {
+		pvWhere += clientClause
+		args = append(args, clientIdArgs...)
+		if timeClause != "" {
+			pvWhere += "AND " + timeClause
+			args = append(args, timeArgs...)
+		}
+	} else if timeClause != "" {
+		pvWhere += timeClause
+		args = append(args, timeArgs...)
+	}
+
+	// Add hostname filter to page_view
+	if len(filter.Hostname) > 0 {
+		hostnamePlaceholders := make([]string, len(filter.Hostname))
+		for i := range filter.Hostname {
+			hostnamePlaceholders[i] = "?"
+			args = append(args, filter.Hostname[i])
+		}
+		if pvWhere != "WHERE " {
+			pvWhere += "AND "
+		}
+		pvWhere += "hostname IN (" + strings.Join(hostnamePlaceholders, ",") + ") "
+	}
+
+	// Build WHERE clause for event subquery
+	evWhere := "WHERE "
+	if clientClause != "" {
+		evWhere += clientClause
+		args = append(args, clientIdArgs...)
+		if timeClause != "" {
+			evWhere += "AND " + timeClause
+			args = append(args, timeArgs...)
+		}
+	} else if timeClause != "" {
+		evWhere += timeClause
+		args = append(args, timeArgs...)
+	}
+
+	// Add event_name filter
+	eventPlaceholders := make([]string, len(filter.EventName))
+	for i := range filter.EventName {
+		eventPlaceholders[i] = "?"
+		args = append(args, filter.EventName[i])
+	}
+	if evWhere != "WHERE " {
+		evWhere += "AND "
+	}
+	evWhere += "event_name IN (" + strings.Join(eventPlaceholders, ",") + ") "
+
+	// Build sample clause
+	sampleClause := ""
+	sampleFactor := ""
+	if filter.Sample > 0 {
+		sampleClause = fmt.Sprintf("SAMPLE %d ", filter.Sample)
+		sampleFactor = "*any(_sample_factor)"
+	}
+
+	// Build the query
+	query := fmt.Sprintf(`SELECT 
+		pv.path, 
+		pv.hostname, 
+		toUInt64(greatest(pv.visitors%s, 0)) AS visitors, 
+		toUInt64(greatest(pv.views%s, 0)) AS views, 
+		toUInt64(greatest(coalesce(e.events, 0)%s, 0)) AS events,
+		toUInt64(greatest(coalesce(e.event_visitors, 0)%s, 0)) AS event_visitors,
+		if(pv.visitors > 0, coalesce(e.event_visitors, 0) / pv.visitors, 0) AS cr
+	FROM (
+		SELECT path, hostname, uniq(visitor_id) AS visitors, count(*) AS views
+		FROM "page_view" %s
+		%s
+		GROUP BY path, hostname
+	) pv
+	LEFT JOIN (
+		SELECT path, count(*) AS events, uniq(visitor_id) AS event_visitors
+		FROM "event" %s
+		%s
+		GROUP BY path
+	) e ON pv.path = e.path
+	ORDER BY cr DESC, visitors DESC, pv.path ASC`,
+		sampleFactor, sampleFactor, sampleFactor, sampleFactor,
+		sampleClause, pvWhere,
+		sampleClause, evWhere)
+
+	// Add pagination
+	if filter.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
+	}
+	if filter.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
+	}
+
+	return query, args
+}

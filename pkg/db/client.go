@@ -1523,6 +1523,36 @@ func (client *Client) SelectPageConversionStats(ctx context.Context, includeTitl
 	return results, nil
 }
 
+// SelectPathConversionStats implements the Store interface.
+func (client *Client) SelectPathConversionStats(ctx context.Context, query string, args ...any) ([]model.PathConversionStats, error) {
+	rows, err := client.QueryContext(ctx, query, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer client.closeRows(rows)
+	var results []model.PathConversionStats
+
+	for rows.Next() {
+		var result model.PathConversionStats
+
+		if err := rows.Scan(&result.Path,
+			&result.Hostname,
+			&result.Visitors,
+			&result.Views,
+			&result.Events,
+			&result.EventVisitors,
+			&result.CR); err != nil {
+			return nil, err
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
 // SelectPageConversionMetaStats implements the Store interface.
 func (client *Client) SelectPageConversionMetaStats(ctx context.Context, includeCustomMetric bool, query string, args ...any) ([]model.PageConversionMetaRow, error) {
 	rows, err := client.QueryContext(ctx, query, args...)

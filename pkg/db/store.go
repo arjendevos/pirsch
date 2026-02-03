@@ -94,6 +94,9 @@ type Store interface {
 	// SelectPageConversionStats selects model.PageConversionStats.
 	SelectPageConversionStats(context.Context, bool, bool, string, ...any) ([]model.PageConversionStats, error)
 
+	// SelectPathConversionStats selects model.PathConversionStats.
+	SelectPathConversionStats(context.Context, string, ...any) ([]model.PathConversionStats, error)
+
 	// SelectPageConversionMetaStats selects model.PageConversionMetaRow for internal processing.
 	SelectPageConversionMetaStats(context.Context, bool, string, ...any) ([]model.PageConversionMetaRow, error)
 
