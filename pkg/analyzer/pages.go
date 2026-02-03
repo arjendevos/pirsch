@@ -802,7 +802,6 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 		toUInt64(greatest(pv.visitors%s, 0)) AS visitors, 
 		toUInt64(greatest(pv.views%s, 0)) AS views, 
 		toUInt64(greatest(coalesce(e.events, 0)%s, 0)) AS events,
-		toUInt64(greatest(coalesce(e.event_visitors, 0)%s, 0)) AS event_visitors,
 		if(pv.visitors > 0, coalesce(e.event_visitors, 0) / pv.visitors, 0) AS cr
 	FROM (
 		SELECT path, hostname, uniq(visitor_id) AS visitors, count(*) AS views
@@ -817,7 +816,7 @@ func (pages *Pages) buildConversionsByPathQuery(filter *Filter) (string, []any) 
 		GROUP BY path
 	) e ON pv.path = e.path
 	ORDER BY cr DESC, visitors DESC, pv.path ASC`,
-		sampleFactor, sampleFactor, sampleFactor, sampleFactor,
+		sampleFactor, sampleFactor, sampleFactor,
 		sampleClause, pvWhere,
 		sampleClause, evWhere)
 

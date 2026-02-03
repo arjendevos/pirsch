@@ -1542,7 +1542,6 @@ func (client *Client) SelectPathConversionStats(ctx context.Context, query strin
 			&result.Visitors,
 			&result.Views,
 			&result.Events,
-			&result.EventVisitors,
 			&result.CR); err != nil {
 			return nil, err
 		}

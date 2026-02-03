@@ -188,15 +188,14 @@ type PageConversionStats struct {
 }
 
 // PathConversionStats is the result type for event conversion rate grouped by path and hostname.
-// Returns the exact fields: path, hostname, visitors, views, events, event_visitors, and cr.
+// Returns the exact fields: path, hostname, visitors, views, events, and cr.
 type PathConversionStats struct {
-	Path          string  `json:"path"`
-	Hostname      string  `json:"hostname"`
-	Visitors      int     `json:"visitors"`
-	Views         int     `json:"views"`
-	Events        int     `json:"events"`
-	EventVisitors int     `json:"event_visitors"`
-	CR            float64 `json:"cr"`
+	Path     string  `json:"path"`
+	Hostname string  `json:"hostname"`
+	Visitors int     `json:"visitors"`
+	Views    int     `json:"views"`
+	Events   int     `json:"events"`
+	CR       float64 `json:"cr"`
 }
 
 // MetaValueStats is the result type for meta value breakdown within a page conversion.
